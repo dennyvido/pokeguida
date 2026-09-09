@@ -104,6 +104,7 @@ function toast(s){const t=document.getElementById("toast");t.textContent=s;t.cla
 function save(){localStorage.setItem(routeStateKey,JSON.stringify(routeState));localStorage.setItem(teamKey,JSON.stringify(team));localStorage.setItem(checkKey,JSON.stringify(checks));}
 function sprite(id){return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iii/firered-leafgreen/${id}.png`;}
 function renderHome(){
+ if(!document.getElementById("homeProgress")) return;
  const done=areas.filter(a=>routeState[a[0]]).length, pct=Math.round(done/areas.length*100);
  document.getElementById("homeProgress").style.width=pct+"%";document.getElementById("progressText").textContent=`${done}/${areas.length} aree principali completate (${pct}%).`;
  document.getElementById("whereSelect").innerHTML=areas.map((a,i)=>`<option value="${i}">${i+1}. ${a[0]}</option>`).join("");
@@ -116,7 +117,7 @@ function updateAdvice(){
  const i=+document.getElementById("whereSelect").value;localStorage.setItem("current_area",String(i));const a=areas[i], next=areas[i+1];
  document.getElementById("nextAdvice").innerHTML=next?`<b>Adesso:</b> ${esc(a[0])}.<br><b>Prossima destinazione:</b> ${esc(next[0])}.<br><span class="small">Livello indicativo: ${next[2]}. ${esc(next[6])}</span>`:`Hai raggiunto la fine del percorso principale. Preparati per il post-game!`;
 }
-document.getElementById("whereSelect").onchange=updateAdvice;
+
 
 function renderAreas(){
  const q=(document.getElementById("areaSearch").value||"").toLowerCase(), f=document.getElementById("areaFilter").value, lv=document.getElementById("areaLevel").value;
@@ -126,7 +127,7 @@ function renderAreas(){
 function focusArea(i){document.querySelectorAll("#areaList .route")[Math.max(0,i)]?.scrollIntoView({behavior:"smooth",block:"center"});}
 function toggleArea(i){routeState[areas[i][0]]=!routeState[areas[i][0]];save();renderAreas();renderHome();toast(routeState[areas[i][0]]?"Area completata ✓":"Area riaperta");}
 
-["areaSearch","areaFilter","areaLevel"].forEach(id=>document.getElementById(id).addEventListener("input",renderAreas));
+
 
 async function api(url){if(cache[url])return cache[url];const r=await fetch(url);if(!r.ok)throw new Error(r.status);return cache[url]=r.json();}
 async function initTypes(){const html='<option value="all">Tutti i tipi</option>'+types.map(t=>`<option>${t}</option>`).join(""); for(const id of ["typeFilter","moveType","tmType","teamAddType"]){const el=document.getElementById(id);if(el)el.innerHTML=html;}}
@@ -134,15 +135,19 @@ async function initTypes(){const html='<option value="all">Tutti i tipi</option>
 const allNames=["bulbasaur","ivysaur","venusaur","charmander","charmeleon","charizard","squirtle","wartortle","blastoise","caterpie","metapod","butterfree","weedle","kakuna","beedrill","pidgey","pidgeotto","pidgeot","rattata","raticate","spearow","fearow","ekans","arbok","pikachu","raichu","sandshrew","sandslash","nidoran-f","nidorina","nidoqueen","nidoran-m","nidorino","nidoking","clefairy","clefable","vulpix","ninetales","jigglypuff","wigglytuff","zubat","golbat","oddish","gloom","vileplume","paras","parasect","venonat","venomoth","diglett","dugtrio","meowth","persian","psyduck","golduck","mankey","primeape","growlithe","arcanine","poliwag","poliwhirl","poliwrath","abra","kadabra","alakazam","machop","machoke","machamp","bellsprout","weepinbell","victreebel","tentacool","tentacruel","geodude","graveler","golem","ponyta","rapidash","slowpoke","slowbro","magnemite","magneton","farfetchd","doduo","dodrio","seel","dewgong","grimer","muk","shellder","cloyster","gastly","haunter","gengar","onix","drowzee","hypno","krabby","kingler","voltorb","electrode","exeggcute","exeggutor","cubone","marowak","hitmonlee","hitmonchan","lickitung","koffing","weezing","rhyhorn","rhydon","chansey","tangela","kangaskhan","horsea","seadra","goldeen","seaking","staryu","starmie","mr-mime","scyther","jynx","electabuzz","magmar","pinsir","tauros","magikarp","gyarados","lapras","ditto","eevee","vaporeon","jolteon","flareon","porygon","omanyte","omastar","kabuto","kabutops","aerodactyl","snorlax","articuno","zapdos","moltres","dratini","dragonair","dragonite","mewtwo","mew"];
 
 function nameId(n){return allNames.indexOf(n)+1;}
+let pokedexData=[];
+const POKE_CACHE_KEY="pokeguida_pokedex_api_v1";
 function renderPokedex(){
- const q=(document.getElementById("pokeSearch").value||"").toLowerCase(), typ=document.getElementById("typeFilter").value, sp=document.getElementById("specialFilter").value;
- const arr=allNames.map((n,i)=>({n,id:i+1})).filter(x=>(!q||x.n.includes(q)||String(x.id)===q||String(x.id).padStart(3,"0")===q));
- document.getElementById("pokeList").innerHTML=arr.filter(x=>{
-  if(sp==="starter"&&!starters.has(x.n))return false;if(sp==="legendary"&&!legendary.has(x.n))return false;if(sp==="evolution"&&!evoOnly.has(x.n))return false;if(sp==="trade"&&!tradeLike.has(x.n))return false;
-  return true;
- }).map(x=>`<div class="poke" data-name="${x.n}" onclick="openPoke('${x.n}')"><img loading="lazy" src="${sprite(x.id)}" alt="${esc(title(x.n))}"><div class="num">#${String(x.id).padStart(3,"0")}</div><b>${esc(title(x.n))}</b><div class="chips" data-types="${x.n}"></div><div style="text-align:center;margin-top:5px"><a class="small" href="${sprite(x.id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🖼️ immagine</a></div></div>`).join("");
- arr.forEach(x=>loadCardType(x.n));
+ const list=document.getElementById("pokeList"); if(!list)return;
+ const q=(document.getElementById("pokeSearch").value||"").toLowerCase().trim();
+ const typ=document.getElementById("typeFilter").value, sp=document.getElementById("specialFilter").value;
+ if(!pokedexData.length){list.innerHTML='<div class="card"><b>⏳ Caricamento Pokédex...</b><p class="muted">Sto leggendo i dati reali da PokéAPI. Al primo avvio può richiedere qualche secondo.</p></div>';return;}
+ const arr=pokedexData.filter(x=>{const hay=`${x.name} ${x.id}`.toLowerCase();if(q&&!hay.includes(q)&&!String(x.id).padStart(3,"0").includes(q))return false;if(typ!=="all"&&!x.types.includes(typ.toLowerCase()))return false;if(sp==="starter"&&!starters.has(x.name))return false;if(sp==="legendary"&&!legendary.has(x.name))return false;if(sp==="evolution"&&!evoOnly.has(x.name))return false;if(sp==="trade"&&!tradeLike.has(x.name))return false;return true;});
+ list.innerHTML=arr.map(x=>`<div class="poke" data-name="${esc(x.name)}" onclick="openPoke('${x.name}')"><img loading="lazy" src="${x.sprite}" alt="${esc(title(x.name))}"><div class="num">#${String(x.id).padStart(3,"0")}</div><b>${esc(title(x.name))}</b><div class="chips">${x.types.map(t=>`<span class="chip">${title(t)}</span>`).join("")}</div><div style="text-align:center;margin-top:5px"><span class="small muted">Apri scheda →</span></div></div>`).join("")||'<div class="card">Nessun Pokémon trovato.</div>';
 }
+async function loadPokedexFromApi(){
+ const list=document.getElementById("pokeList");if(!list)return;
+ try{const saved=localStorage.getItem(POKE_CACHE_KEY);if(saved){pokedexData=JSON.parse(saved);renderPokedex();return;}list.innerHTML='<div class="card"><b>⏳ Caricamento dei 151 Pokémon di Kanto...</b><p class="muted">La prima volta scarico i dati da PokéAPI e poi li salvo sul tuo iPhone.</p></div>';const jobs=allNames.map((name,i)=>api(`https://pokeapi.co/api/v2/pokemon/${i+1}`).then(p=>({id:p.id,name:p.name,types:p.types.map(t=>t.type.name),sprite:p.sprites.versions?.['generation-iii']?.['firered-leafgreen']?.front_default||sprite(p.id)})));for(let i=0;i<jobs.length;i+=12)pokedexData.push(...await Promise.all(jobs.slice(i,i+12)));pokedexData.sort((a,b)=>a.id-b.id);localStorage.setItem(POKE_CACHE_KEY,JSON.stringify(pokedexData));renderPokedex();}catch(e){list.innerHTML='<div class="card"><b>⚠️ Impossibile caricare PokéAPI.</b><p class="muted">Controlla la connessione e ricarica la pagina. Il sito è online, ma i dati dinamici dipendono dall’API.</p><button onclick="loadPokedexFromApi()">Riprova</button></div>';}}
 async function loadCardType(n){try{const p=await api(`https://pokeapi.co/api/v2/pokemon/${n}`);const el=document.querySelector(`[data-types="${CSS.escape(n)}"]`);if(el)el.innerHTML=p.types.map(t=>`<span class="chip">${title(t.type.name)}</span>`).join("");}catch{}}
 async function openPoke(n){
  const d=document.getElementById("pokeDetail");d.style.display="block";d.innerHTML="<b>Caricamento dati FireRed...</b>";d.scrollIntoView({behavior:"smooth",block:"start"});
@@ -163,21 +168,21 @@ async function openPoke(n){
   <div class="tip"><b>Moveset storia:</b> usa 1–2 STAB affidabili, una copertura utile e una mossa di utilità. Ricorda la regola Gen III: Fisico/Speciale dipende dal tipo.</div>`;
  }catch(e){d.innerHTML=`<b>Errore nel caricamento.</b><p class=muted>${esc(e.message)}</p>`;}
 }
-["pokeSearch","typeFilter","specialFilter"].forEach(id=>document.getElementById(id).addEventListener("input",renderPokedex));
 
-function renderMoves(){
- const q=document.getElementById("moveSearch").value.toLowerCase(),cat=document.getElementById("moveCat").value,typ=document.getElementById("moveType").value;
- const arr=tms.map(x=>({name:x[1],type:x[2],power:x[3],pp:x[4],cat:x[5]})).filter(x=>(!q||x.name.toLowerCase().includes(q))&&(cat==="all"||x.cat.toLowerCase().includes(cat==="physical"?"fisica":cat==="special"?"speciale":"stato"))&&(typ==="all"||x.type===typ));
- document.getElementById("moveList").innerHTML=arr.map(x=>`<div class="card"><h3>${x.name}</h3><div class="chips"><span class="chip">${x.type}</span><span class="chip">${x.cat}</span></div><div class="stat"><span>Potenza</span><b>${x.power}</b></div><div class="stat"><span>PP</span><b>${x.pp}</b></div><p class="small muted">Questa lista è centrata sulle MT FireRed; per mosse di livello del singolo Pokémon usa il Pokédex.</p></div>`).join("");
-}
-["moveSearch","moveCat","moveType"].forEach(id=>document.getElementById(id).addEventListener("input",renderMoves));
 
+let apiMoves=[];
+const MOVES_CACHE_KEY="pokeguida_moves_api_v1";
+const physicalTypes=new Set(["normal","fighting","flying","poison","ground","rock","bug","ghost","steel"]);
+const typeIt={normal:"Normale",fire:"Fuoco",water:"Acqua",electric:"Elettro",grass:"Erba",ice:"Ghiaccio",fighting:"Lotta",poison:"Veleno",ground:"Terra",flying:"Volante",psychic:"Psico",bug:"Coleottero",rock:"Roccia",ghost:"Spettro",dragon:"Drago",dark:"Buio",steel:"Acciaio"};
+function moveCategory(m){if(m.damage_class?.name==="status")return "Stato";return physicalTypes.has(m.type.name)?"Fisica":"Speciale";}
+function renderMoves(){const list=document.getElementById("moveList");if(!list)return;const q=(document.getElementById("moveSearch").value||"").toLowerCase().trim(),cat=document.getElementById("moveCat").value,typ=document.getElementById("moveType").value;if(!apiMoves.length){list.innerHTML='<div class="card"><b>⏳ Caricamento archivio mosse...</b><p class="muted">I dati vengono letti direttamente da PokéAPI.</p></div>';return;}const arr=apiMoves.filter(m=>(!q||m.name.includes(q))&&(cat==="all"||moveCategory(m).toLowerCase()===({physical:"fisica",special:"speciale",status:"stato"}[cat]))&&(typ==="all"||typeIt[m.type.name]===typ));list.innerHTML=arr.map(m=>`<div class="card"><h3>${esc(title(m.name))}</h3><div class="chips"><span class="chip">${typeIt[m.type.name]||title(m.type.name)}</span><span class="chip">${moveCategory(m)}</span></div><div class="stat"><span>Potenza</span><b>${m.power??"—"}</b></div><div class="stat"><span>Precisione</span><b>${m.accuracy??"—"}</b></div><div class="stat"><span>PP</span><b>${m.pp??"—"}</b></div><p class="small muted">ID PokéAPI #${m.id} • Generazione ${m.generation?.name?.replace("generation-","")||"—"}</p></div>`).join("")||'<div class="card">Nessuna mossa trovata.</div>';}
+async function loadMovesFromApi(){const list=document.getElementById("moveList");if(!list)return;try{const saved=localStorage.getItem(MOVES_CACHE_KEY);if(saved){apiMoves=JSON.parse(saved);renderMoves();return;}list.innerHTML='<div class="card"><b>⏳ Scarico le mosse delle prime tre generazioni...</b><p class="muted">Al primo avvio può richiedere un po’ di tempo; poi restano memorizzate sul dispositivo.</p></div>';const index=await api("https://pokeapi.co/api/v2/move?limit=1000&offset=0");const refs=index.results.filter(x=>Number(x.url.split("/").filter(Boolean).pop())<=354);for(let i=0;i<refs.length;i+=20){const batch=await Promise.all(refs.slice(i,i+20).map(x=>api(x.url)));apiMoves.push(...batch);list.innerHTML=`<div class="card"><b>⏳ Mosse caricate: ${Math.min(i+20,refs.length)}/${refs.length}</b></div>`;}apiMoves.sort((a,b)=>a.id-b.id);localStorage.setItem(MOVES_CACHE_KEY,JSON.stringify(apiMoves));renderMoves();}catch(e){list.innerHTML='<div class="card"><b>⚠️ Errore nel caricamento delle mosse.</b><p class="muted">Ricarica la pagina e riprova.</p><button onclick="loadMovesFromApi()">Riprova</button></div>';}}
 function renderTMs(){
  const q=document.getElementById("tmSearch").value.toLowerCase(),typ=document.getElementById("tmType").value,imp=document.getElementById("tmImportant").value;
  document.getElementById("tmBody").innerHTML=tms.filter(x=>(!q||x.join(" ").toLowerCase().includes(q))&&(typ==="all"||x[2]===typ)&&(imp==="all"||x[7])).map(x=>`<tr><td><b>TM${x[0]}</b>${x[7]?'<br><span class="small">⭐ storia</span>':""}</td><td>${x[1]}</td><td>${x[2]}</td><td>${x[3]}</td><td>${x[4]}</td><td>${x[5]}</td><td>${x[6]}</td></tr>`).join("");
  document.getElementById("hmList").innerHTML=hms.map(x=>`<div class="card"><h3>${x[0]} — ${x[1]}</h3><span class="chip">${x[2]}</span><p>${x[3]}</p></div>`).join("");
 }
-["tmSearch","tmType","tmImportant"].forEach(id=>document.getElementById(id).addEventListener("input",renderTMs));
+
 
 function renderGyms(){
  const done=gyms.filter((_,i)=>checks["gym"+i]).length,pct=Math.round(done/8*100);document.getElementById("gymProgress").style.width=pct+"%";document.getElementById("gymProgressText").textContent=`${done}/8 palestre completate`;
@@ -212,8 +217,8 @@ async function showCompare(){
  const a=document.getElementById("compareA").value,b=document.getElementById("compareB").value;if(!a||!b||a===b){document.getElementById("compareResult").innerHTML='<p class="muted">Scegli due Pokémon diversi.</p>';return}
  try{const [pa,pb]=await Promise.all([api(`https://pokeapi.co/api/v2/pokemon/${a}`),api(`https://pokeapi.co/api/v2/pokemon/${b}`)]);const rows=pa.stats.map((s,i)=>`<tr><td>${title(s.stat.name)}</td><td><b>${s.base_stat}</b></td><td><b>${pb.stats[i].base_stat}</b></td></tr>`).join("");document.getElementById("compareResult").innerHTML=`<div class="scroll"><table><thead><tr><th>Stat</th><th>${title(a)}</th><th>${title(b)}</th></tr></thead><tbody>${rows}</tbody></table></div><p><b>Tipi:</b> ${title(a)} = ${pa.types.map(x=>title(x.type.name)).join("/")} · ${title(b)} = ${pb.types.map(x=>title(x.type.name)).join("/")}</p><p class="tip"><b>Per la storia:</b> non scegliere solo dal totale delle statistiche. Considera disponibilità, livello a cui viene ottenuto, mosse e copertura del resto della squadra.</p>`}catch(e){document.getElementById("compareResult").textContent="Errore nel confronto."}
 }
-document.getElementById("compareA").onchange=showCompare;document.getElementById("compareB").onchange=showCompare;
-["teamSearch","teamAddType"].forEach(id=>document.getElementById(id).addEventListener("input",renderTeam));document.getElementById("resetTeam").onclick=()=>{if(confirm("Vuoi cancellare la squadra salvata?")){team=[];save();renderTeam();renderHome();}};
+
+
 function renderChecklist(){
  const gymHTML=gyms.map((g,i)=>checkItem("gym"+i,`${i+1}. ${g.name} — Badge ${g.badge}`)).join("");
  const areaHTML=areas.map((a,i)=>checkItem("area"+i,`${i+1}. ${a[0]}`)).join("");
@@ -224,16 +229,17 @@ function renderChecklist(){
 function checkItem(key,label){return `<div class="check ${checks[key]?"done":""}"><input type="checkbox" ${checks[key]?"checked":""} onchange="toggleCheck('${key}')"><label>${esc(label)}</label></div>`}
 function toggleCheck(k){checks[k]=!checks[k];save();renderChecklist();renderHome();}
 function updateCheckProgress(){const total=8+areas.length+6,done=[...Object.keys(checks)].filter(k=>checks[k]).length,pct=Math.round(done/total*100);document.getElementById("checkProgress").style.width=pct+"%";document.getElementById("checkProgressText").textContent=`${done}/${total} obiettivi completati (${pct}%).`}
-document.getElementById("resetChecks").onclick=()=>{if(confirm("Resettare tutto il progresso?")){checks={};routeState={};save();renderChecklist();renderGyms();renderAreas();renderHome();toast("Progresso azzerato");}};
+
 
 initTypes();
 const page=document.body.dataset.page;
-if(page==="home")renderHome();
-if(page==="adventure")renderAreas();
-if(page==="pokedex"){renderPokedex();}
-if(page==="moves")renderMoves();
-if(page==="tms")renderTMs();
+initTypes();
+function listen(id,evt,fn){const el=document.getElementById(id);if(el)el.addEventListener(evt,fn);}
+if(page==="home"){listen("whereSelect","change",updateAdvice);renderHome();}
+if(page==="adventure"){["areaSearch","areaFilter","areaLevel"].forEach(id=>listen(id,"input",renderAreas));renderAreas();}
+if(page==="pokedex"){["pokeSearch","typeFilter","specialFilter"].forEach(id=>listen(id,"input",renderPokedex));renderPokedex();loadPokedexFromApi();}
+if(page==="moves"){["moveSearch","moveCat","moveType"].forEach(id=>listen(id,"input",renderMoves));renderMoves();loadMovesFromApi();}
+if(page==="tms"){["tmSearch","tmType","tmImportant"].forEach(id=>listen(id,"input",renderTMs));renderTMs();}
 if(page==="gyms")renderGyms();
-if(page==="team")renderTeam();
-if(page==="checklist")renderChecklist();
-</script></body></html>
+if(page==="team"){["teamSearch","teamAddType"].forEach(id=>listen(id,"input",renderTeam));listen("compareA","change",showCompare);listen("compareB","change",showCompare);const reset=document.getElementById("resetTeam");if(reset)reset.onclick=()=>{if(confirm("Vuoi cancellare la squadra salvata?")){team=[];save();renderTeam();}};renderTeam();}
+if(page==="checklist"){const reset=document.getElementById("resetChecks");if(reset)reset.onclick=()=>{if(confirm("Resettare tutto il progresso?")){checks={};routeState={};save();renderChecklist();toast("Progresso azzerato");}};renderChecklist();}
