@@ -1,10 +1,8 @@
-POKEGUIDA FIRERED — VERSIONE API
+POKEGUIDA FIRERED — V6
 
-Sostituisci i vecchi file HTML del repository GitHub con questi file.
+Questa versione usa un solo app.js condiviso e style.css condiviso.
+I dati dinamici vengono caricati da PokéAPI direttamente dal browser.
+La cache è versionata per evitare che una vecchia cache vuota blocchi il Pokédex.
+È presente .nojekyll per pubblicazione statica pulita su GitHub Pages.
 
-Questa versione usa PokéAPI direttamente dal browser: https://pokeapi.co/api/v2/
-- Pokédex: 151 Pokémon di Kanto, tipi, sprite e schede dettagliate.
-- Mosse: archivio delle mosse ID 1–354, con tipo, categoria, potenza, precisione e PP.
-- Cache locale sul dispositivo per velocizzare le aperture successive.
-
-Il sito deve essere aperto tramite GitHub Pages/HTTPS.
+Per aggiornare il repository: sostituire i file HTML esistenti e aggiungere app.js, style.css e .nojekyll nella radice.
