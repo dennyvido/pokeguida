@@ -104,82 +104,244 @@ async function api(url){
  if(!r.ok)throw new Error("HTTP "+r.status);
  const v=await r.json();cache[url]=v;return v;
 }
-async function initTypes(){const html='<option value="all">Tutti i tipi</option>'+types.map(t=>`<option>${t}</option>`).join(""); for(const id of ["typeFilter","moveType","tmType","teamAddType"]){const el=document.getElementById(id);if(el)el.innerHTML=html;}}
+async function initTypes(){
+ const keyForLabel=t=>Object.entries(typeIt).find(([k,v])=>v===t)?.[0]||t.toLowerCase();
+ for(const id of ["typeFilter","moveType","teamAddType"]){const el=document.getElementById(id);if(el)el.innerHTML='<option value="all">Tutti i tipi</option>'+types.map(t=>`<option value="${keyForLabel(t)}">${t}</option>`).join("");}
+ const tm=document.getElementById("tmType");if(tm)tm.innerHTML='<option value="all">Tutti i tipi</option>'+types.map(t=>`<option value="${t}">${t}</option>`).join("");
+}
 
 const allNames=["bulbasaur","ivysaur","venusaur","charmander","charmeleon","charizard","squirtle","wartortle","blastoise","caterpie","metapod","butterfree","weedle","kakuna","beedrill","pidgey","pidgeotto","pidgeot","rattata","raticate","spearow","fearow","ekans","arbok","pikachu","raichu","sandshrew","sandslash","nidoran-f","nidorina","nidoqueen","nidoran-m","nidorino","nidoking","clefairy","clefable","vulpix","ninetales","jigglypuff","wigglytuff","zubat","golbat","oddish","gloom","vileplume","paras","parasect","venonat","venomoth","diglett","dugtrio","meowth","persian","psyduck","golduck","mankey","primeape","growlithe","arcanine","poliwag","poliwhirl","poliwrath","abra","kadabra","alakazam","machop","machoke","machamp","bellsprout","weepinbell","victreebel","tentacool","tentacruel","geodude","graveler","golem","ponyta","rapidash","slowpoke","slowbro","magnemite","magneton","farfetchd","doduo","dodrio","seel","dewgong","grimer","muk","shellder","cloyster","gastly","haunter","gengar","onix","drowzee","hypno","krabby","kingler","voltorb","electrode","exeggcute","exeggutor","cubone","marowak","hitmonlee","hitmonchan","lickitung","koffing","weezing","rhyhorn","rhydon","chansey","tangela","kangaskhan","horsea","seadra","goldeen","seaking","staryu","starmie","mr-mime","scyther","jynx","electabuzz","magmar","pinsir","tauros","magikarp","gyarados","lapras","ditto","eevee","vaporeon","jolteon","flareon","porygon","omanyte","omastar","kabuto","kabutops","aerodactyl","snorlax","articuno","zapdos","moltres","dratini","dragonair","dragonite","mewtwo","mew"];
 
 function nameId(n){return allNames.indexOf(n)+1;}
+
 let pokedexData=[];
-const POKE_CACHE_KEY="pokeguida_pokedex_api_v6";
+const POKE_CACHE_KEY='pokeguida_pokedex_api_v7';
+async function getItalianNamesBatch(items){
+ for(let i=0;i<items.length;i+=10){
+  const batch=await Promise.all(items.slice(i,i+10).map(async x=>{try{const sp=await api(BASE+'pokemon-species/'+x.name);return [x.name,itNameFromNames(sp)]}catch{return [x.name,nameItFallback[x.name]||title(x.name)]}}));
+  const map=new Map(batch);items.forEach(x=>{x.itName=map.get(x.name)||title(x.name)});renderPokedex();
+ }
+}
 function renderPokedex(){
- const list=document.getElementById("pokeList"); if(!list)return;
- const q=(document.getElementById("pokeSearch").value||"").toLowerCase().trim();
- const typ=document.getElementById("typeFilter").value, sp=document.getElementById("specialFilter").value;
- if(!pokedexData.length){list.innerHTML='<div class="card"><b>⏳ Caricamento Pokédex...</b><p class="muted">Sto leggendo i dati reali da PokéAPI. Al primo avvio può richiedere qualche secondo.</p></div>';return;}
- const arr=pokedexData.filter(x=>{const hay=`${x.name} ${x.id}`.toLowerCase();if(q&&!hay.includes(q)&&!String(x.id).padStart(3,"0").includes(q))return false;if(typ!=="all"&&!x.types.includes(typ.toLowerCase()))return false;if(sp==="starter"&&!starters.has(x.name))return false;if(sp==="legendary"&&!legendary.has(x.name))return false;if(sp==="evolution"&&!evoOnly.has(x.name))return false;if(sp==="trade"&&!tradeLike.has(x.name))return false;return true;});
- list.innerHTML=arr.map(x=>`<div class="poke" data-name="${esc(x.name)}" onclick="openPoke('${x.name}')"><img loading="lazy" src="${x.sprite}" alt="${esc(title(x.name))}"><div class="num">#${String(x.id).padStart(3,"0")}</div><b>${esc(title(x.name))}</b><div class="chips">${x.types.map(t=>`<span class="chip">${title(t)}</span>`).join("")}</div><div style="text-align:center;margin-top:5px"><span class="small muted">Apri scheda →</span></div></div>`).join("")||'<div class="card">Nessun Pokémon trovato.</div>';
+ const list=document.getElementById('pokeList');if(!list)return;
+ const q=(document.getElementById('pokeSearch').value||'').toLowerCase().trim(),typ=document.getElementById('typeFilter').value,sp=document.getElementById('specialFilter').value;
+ if(!pokedexData.length){list.innerHTML='<div class="card"><b>⏳ Caricamento Pokédex...</b><p class="muted">Sto leggendo i dati reali da PokéAPI.</p></div>';return;}
+ const arr=pokedexData.filter(x=>{const hay=`${x.itName||x.name} ${x.name} ${x.id}`.toLowerCase();if(q&&!hay.includes(q)&&!String(x.id).padStart(3,'0').includes(q))return false;if(typ!=='all'&&!x.types.includes(typ))return false;if(sp==='starter'&&!starters.has(x.name))return false;if(sp==='legendary'&&!legendary.has(x.name))return false;if(sp==='evolution'&&!evoOnly.has(x.name))return false;if(sp==='trade'&&!tradeLike.has(x.name))return false;return true;});
+ list.innerHTML=arr.map(x=>`<div class="poke" onclick="openPoke('${x.name}')"><img loading="lazy" src="${x.sprite}" alt="${esc(x.itName||title(x.name))}"><div class="num">#${String(x.id).padStart(3,'0')}</div><b>${esc(x.itName||title(x.name))}</b><div class="chips">${x.types.map(t=>`<span class="chip">${esc(typeIt[t]||title(t))}</span>`).join('')}</div><div style="text-align:center;margin-top:5px"><span class="small muted">Apri scheda →</span></div></div>`).join('')||'<div class="card">Nessun Pokémon trovato.</div>';
 }
 async function loadPokedexFromApi(){
- const list=document.getElementById("pokeList");if(!list)return;
+ const list=document.getElementById('pokeList');if(!list)return;
  try{
   const saved=localStorage.getItem(POKE_CACHE_KEY);
-  if(saved){try{const parsed=JSON.parse(saved);if(Array.isArray(parsed)&&parsed.length===151){pokedexData=parsed;renderPokedex();return;}}catch{}}
-  list.innerHTML='<div class="card"><b>⏳ Caricamento dei 151 Pokémon di Kanto...</b><p class="muted">Scarico i dati a piccoli blocchi per non sovraccaricare il telefono o PokéAPI.</p></div>';
-  pokedexData=[];
-  for(let start=0;start<151;start+=8){
-   const ids=Array.from({length:Math.min(8,151-start)},(_,j)=>start+j+1);
-   const batch=await Promise.all(ids.map(async id=>{const p=await api(`https://pokeapi.co/api/v2/pokemon/${id}`);return {id:p.id,name:p.name,types:p.types.map(t=>t.type.name),sprite:p.sprites.versions?.['generation-iii']?.['firered-leafgreen']?.front_default||sprite(p.id)}}));
-   pokedexData.push(...batch);pokedexData.sort((a,b)=>a.id-b.id);renderPokedex();
-   list.dataset.loaded=String(pokedexData.length);
-   const status=document.querySelector('#pokeList')?.previousElementSibling; if(status&&status.classList.contains('status'))status.innerHTML=`⏳ Pokémon caricati: ${pokedexData.length}/151…`;
-  }
-  localStorage.setItem(POKE_CACHE_KEY,JSON.stringify(pokedexData));renderPokedex();
- }catch(e){console.error(e);list.innerHTML='<div class="card"><b>⚠️ Impossibile caricare PokéAPI.</b><p class="muted">Controlla la connessione e riprova. Se il problema persiste, apri la pagina direttamente con Safari/Chrome.</p><button onclick="loadPokedexFromApi()">Riprova</button></div>';}
-}
-async function loadCardType(n){try{const p=await api(`https://pokeapi.co/api/v2/pokemon/${n}`);const el=document.querySelector(`[data-types="${CSS.escape(n)}"]`);if(el)el.innerHTML=p.types.map(t=>`<span class="chip">${title(t.type.name)}</span>`).join("");}catch{}}
-async function openPoke(n){
- const d=document.getElementById("pokeDetail");d.style.display="block";d.innerHTML="<b>Caricamento dati FireRed...</b>";d.scrollIntoView({behavior:"smooth",block:"start"});
- try{
-  const p=await api(`https://pokeapi.co/api/v2/pokemon/${n}`), s=await api(`https://pokeapi.co/api/v2/pokemon-species/${n}`);
-  const vg=p.moves.flatMap(m=>m.version_group_details.filter(v=>v.version_group.name==="firered-leafgreen").map(v=>({name:m.move.name,method:v.move_learn_method.name,level:v.level_learned_at,url:m.move.url})));
-  const level=vg.filter(m=>m.method==="level-up").sort((a,b)=>a.level-b.level);
-  const tm=vg.filter(m=>m.method==="machine");
-  const chain=await api(s.evolution_chain.url), evo=[];function walk(x){evo.push(x.species.name);x.evolves_to.forEach(walk)}walk(chain.chain);
-  const stats=p.stats.map(x=>`<div class="stat"><span>${title(x.stat.name)}</span><b>${x.base_stat}</b></div>`).join("");
-  const types=p.types.map(x=>title(x.type.name));
-  const moves=level.length?`<div class="scroll"><table><thead><tr><th>Liv.</th><th>Mossa</th></tr></thead><tbody>${level.map(m=>`<tr><td>${m.level}</td><td>${title(m.name)}</td></tr>`).join("")}</tbody></table></div>`:"<p class=muted>Nessuna mossa di livello disponibile nei dati.</p>";
-  const machines=tm.map(m=>title(m.name)).join(", ")||"—";
-  d.innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;align-items:start"><div><h2>#${String(p.id).padStart(3,"0")} ${title(p.name)}</h2><div class="chips">${types.map(x=>`<span class="chip">${x}</span>`).join("")}</div></div><img src="${sprite(p.id)}" alt="${title(p.name)}" style="width:110px;height:110px;object-fit:contain"></div>
-  <p><a class="button" href="${sprite(p.id)}" target="_blank" rel="noopener">🖼️ Apri sprite FireRed online</a></p>
-  <div class="two"><div><h3>Statistiche base</h3>${stats}</div><div><h3>Informazioni</h3><p><b>Abilità:</b> ${p.abilities.map(a=>title(a.ability.name)).join(", ")}</p><p><b>Linea evolutiva:</b></p><div class="evo">${evo.map((e,i)=>`${i?'<span class="arrow">→</span>':''}<span>${title(e)}</span>`).join("")}</div><p><b>MT/MN:</b> ${machines}</p><p class="small muted">Le condizioni di evoluzione vengono lette dalla catena FireRed/LeafGreen; per dettagli complessi può essere necessario aprire la voce specifica.</p></div></div>
-  <h3 style="margin-top:18px">Mosse imparate salendo di livello — FireRed/LeafGreen</h3>${moves}
-  <div class="tip"><b>Moveset storia:</b> usa 1–2 STAB affidabili, una copertura utile e una mossa di utilità. Ricorda la regola Gen III: Fisico/Speciale dipende dal tipo.</div>`;
- }catch(e){d.innerHTML=`<b>Errore nel caricamento.</b><p class=muted>${esc(e.message)}</p>`;}
+  if(saved){try{const parsed=JSON.parse(saved);if(Array.isArray(parsed)&&parsed.length===151&&parsed.every(x=>x.itName&&x.sprite)){pokedexData=parsed;renderPokedex();return;}}catch{}}
+  list.innerHTML='<div class="card"><b>⏳ Caricamento dei 151 Pokémon di Kanto...</b><p class="muted">Scarico i dati a piccoli blocchi.</p></div>';pokedexData=[];
+  for(let start=0;start<151;start+=8){const ids=Array.from({length:Math.min(8,151-start)},(_,j)=>start+j+1);const batch=await Promise.all(ids.map(async id=>{const p=await api(BASE+'pokemon/'+id);return {id:p.id,name:p.name,itName:nameItFallback[p.name]||title(p.name),types:p.types.map(t=>t.type.name),sprite:p.sprites.versions?.['generation-iii']?.['firered-leafgreen']?.front_default||sprite(p.id)}}));pokedexData.push(...batch);pokedexData.sort((a,b)=>a.id-b.id);renderPokedex();list.dataset.loaded=String(pokedexData.length);}
+  await getItalianNamesBatch(pokedexData);localStorage.setItem(POKE_CACHE_KEY,JSON.stringify(pokedexData));renderPokedex();
+ }catch(e){console.error(e);list.innerHTML=`<div class="card"><b>⚠️ Impossibile caricare PokéAPI.</b><p class="muted">${esc(e.message)}. Controlla la connessione.</p><button onclick="loadPokedexFromApi()">Riprova</button></div>`;}
 }
 
+/* ---------- FireRed / LeafGreen helpers ---------- */
+const V7='7.0.0';
+const BASE='https://pokeapi.co/api/v2/';
+const GEN3_VERSION_GROUP='firered-leafgreen';
+const evoItemIt={
+  'fire-stone':'Pietrafocaia','water-stone':'Pietraidrica','thunder-stone':'Pietratuono','leaf-stone':'Pietrafoglia','moon-stone':'Pietralunare','sun-stone':'Pietrasolare',
+  'metal-coat':'Metalcoperta','king-s-rock':'Roccia di Re','dragon-scale':'Squama Drago','upgrade':'Upgrade'
+};
+const evolutionOverrides={
+  charmander:[{to:'charmeleon',text:'🆙 Livello 16'}],charmeleon:[{to:'charizard',text:'🆙 Livello 36'}],
+  squirtle:[{to:'wartortle',text:'🆙 Livello 16'}],wartortle:[{to:'blastoise',text:'🆙 Livello 36'}],
+  bulbasaur:[{to:'ivysaur',text:'🆙 Livello 16'}],ivysaur:[{to:'venusaur',text:'🆙 Livello 32'}],
+  caterpie:[{to:'metapod',text:'🆙 Livello 7'}],metapod:[{to:'butterfree',text:'🆙 Livello 10'}],
+  weedle:[{to:'kakuna',text:'🆙 Livello 7'}],kakuna:[{to:'beedrill',text:'🆙 Livello 10'}],
+  pidgey:[{to:'pidgeotto',text:'🆙 Livello 18'}],pidgeotto:[{to:'pidgeot',text:'🆙 Livello 36'}],
+  rattata:[{to:'raticate',text:'🆙 Livello 20'}],spearow:[{to:'fearow',text:'🆙 Livello 20'}],ekans:[{to:'arbok',text:'🆙 Livello 22'}],
+  pikachu:[{to:'raichu',text:'🪨 Pietratuono'}],sandshrew:[{to:'sandslash',text:'🆙 Livello 22'}],
+  'nidoran-f':[{to:'nidorina',text:'🆙 Livello 16'}],nidorina:[{to:'nidoqueen',text:'🪨 Pietralunare'}],
+  'nidoran-m':[{to:'nidorino',text:'🆙 Livello 16'}],nidorino:[{to:'nidoking',text:'🪨 Pietralunare'}],
+  clefairy:[{to:'clefable',text:'🪨 Pietralunare'}],vulpix:[{to:'ninetales',text:'🪨 Pietrafocaia'}],
+  jigglypuff:[{to:'wigglytuff',text:'🪨 Pietralunare'}],zubat:[{to:'golbat',text:'🆙 Livello 22'}],
+  oddish:[{to:'gloom',text:'🆙 Livello 21'}],gloom:[{to:'vileplume',text:'🪨 Pietrafoglia'},{to:'bellossom',text:'🪨 Pietrasolare • post-National Dex'}],
+  paras:[{to:'parasect',text:'🆙 Livello 24'}],venonat:[{to:'venomoth',text:'🆙 Livello 31'}],diglett:[{to:'dugtrio',text:'🆙 Livello 26'}],
+  meowth:[{to:'persian',text:'🆙 Livello 28'}],psyduck:[{to:'golduck',text:'🆙 Livello 33'}],mankey:[{to:'primeape',text:'🆙 Livello 28'}],
+  growlithe:[{to:'arcanine',text:'🪨 Pietrafocaia'}],poliwag:[{to:'poliwhirl',text:'🆙 Livello 25'}],
+  poliwhirl:[{to:'poliwrath',text:'🪨 Pietraidrica'},{to:'politoed',text:'🔄 Scambio con Roccia di Re • post-National Dex'}],
+  abra:[{to:'kadabra',text:'🆙 Livello 16'}],kadabra:[{to:'alakazam',text:'🔄 Scambio'}],machop:[{to:'machoke',text:'🆙 Livello 28'}],machoke:[{to:'machamp',text:'🔄 Scambio'}],
+  bellsprout:[{to:'weepinbell',text:'🆙 Livello 21'}],weepinbell:[{to:'victreebel',text:'🪨 Pietrafoglia'}],
+  tentacool:[{to:'tentacruel',text:'🆙 Livello 30'}],geodude:[{to:'graveler',text:'🆙 Livello 25'}],graveler:[{to:'golem',text:'🔄 Scambio'}],
+  ponyta:[{to:'rapidash',text:'🆙 Livello 40'}],slowpoke:[{to:'slowbro',text:'🆙 Livello 37'},{to:'slowking',text:'🔄 Scambio con Roccia di Re • post-National Dex'}],
+  magnemite:[{to:'magneton',text:'🆙 Livello 30'}],farfetchd:[],doduo:[{to:'dodrio',text:'🆙 Livello 31'}],seel:[{to:'dewgong',text:'🆙 Livello 34'}],
+  grimer:[{to:'muk',text:'🆙 Livello 38'}],shellder:[{to:'cloyster',text:'🪨 Pietraidrica'}],gastly:[{to:'haunter',text:'🆙 Livello 25'}],haunter:[{to:'gengar',text:'🔄 Scambio'}],
+  onix:[{to:'steelix',text:'🔄 Scambio con Metalcoperta • post-National Dex'}],drowzee:[{to:'hypno',text:'🆙 Livello 26'}],krabby:[{to:'kingler',text:'🆙 Livello 28'}],
+  voltorb:[{to:'electrode',text:'🆙 Livello 30'}],exeggcute:[{to:'exeggutor',text:'🪨 Pietrafoglia'}],cubone:[{to:'marowak',text:'🆙 Livello 28'}],
+  koffing:[{to:'weezing',text:'🆙 Livello 35'}],rhyhorn:[{to:'rhydon',text:'🆙 Livello 42'}],chansey:[{to:'blissey',text:'❤️ Felicità alta + livello • post-National Dex'}],
+  horsea:[{to:'seadra',text:'🆙 Livello 32'}],seadra:[{to:'kingdra',text:'🔄 Scambio con Squama Drago • post-National Dex'}],goldeen:[{to:'seaking',text:'🆙 Livello 33'}],staryu:[{to:'starmie',text:'🪨 Pietraidrica'}],
+  scyther:[{to:'scizor',text:'🔄 Scambio con Metalcoperta • post-National Dex'}],magikarp:[{to:'gyarados',text:'🆙 Livello 20'}],
+  eevee:[{to:'vaporeon',text:'🪨 Pietraidrica'},{to:'jolteon',text:'🪨 Pietratuono'},{to:'flareon',text:'🪨 Pietrafocaia'}],
+  porygon:[{to:'porygon2',text:'🔄 Scambio con Upgrade • post-National Dex'}],omanyte:[{to:'omastar',text:'🆙 Livello 40'}],kabuto:[{to:'kabutops',text:'🆙 Livello 40'}],
+  dratini:[{to:'dragonair',text:'🆙 Livello 30'}],dragonair:[{to:'dragonite',text:'🆙 Livello 55'}]
+};
+const specialObtain={
+  bulbasaur:'🎁 Starter a scelta del Professor Oak',charmander:'🎁 Starter a scelta del Professor Oak',squirtle:'🎁 Starter a scelta del Professor Oak',
+  eevee:'🎁 Regalo in Celadon Mansion',hitmonlee:'🎁 Ricompensa dal Dojo di Saffron: scegli Hitmonlee o Hitmonchan',hitmonchan:'🎁 Ricompensa dal Dojo di Saffron: scegli Hitmonlee o Hitmonchan',
+  lapras:'🎁 Regalo da un dipendente di Silph Co.',snorlax:'🗺️ Incontro fisso su Route 12 o Route 16',omanyte:'🪨 Fossile Helix: risveglio a Cinnabar Island',kabuto:'🪨 Fossile Dome: risveglio a Cinnabar Island',aerodactyl:'🪨 Old Amber: risveglio a Cinnabar Island',
+  porygon:'🎟️ Premio del Game Corner di Celadon',
+  'farfetchd':'🔄 Scambio in-game a Vermilion City (per Spearow)',
+  'mr-mime':'🔄 Scambio in-game a Route 2 (per Abra)',
+  jynx:'🔄 Scambio in-game a Cerulean City (per Poliwhirl)',
+  lickitung:'🔄 Scambio in-game a Route 18 (per Golduck)',
+  'hitmonlee':'🎁 Dojo Lotta di Saffron City', 'hitmonchan':'🎁 Dojo Lotta di Saffron City'
+};
+const localEvolutionNotes={
+  eevee:'In FireRed non esistono giorno/notte: Espeon e Umbreon non sono evoluzioni ottenibili normalmente nella cartuccia.',
+  golbat:'Crobat richiede il National Pokédex in FireRed/LeafGreen.',chansey:'Blissey richiede il National Pokédex in FireRed/LeafGreen.',
+  onix:'Steelix richiede National Pokédex e scambio tenendo Metalcoperta.',scyther:'Scizor richiede National Pokédex e scambio tenendo Metalcoperta.',
+  seadra:'Kingdra richiede National Pokédex e scambio tenendo Squama Drago.',porygon:'Porygon2 richiede National Pokédex e scambio tenendo Upgrade.'
+};
+const nameItFallback={
+  'nidoran-f':'Nidoran♀','nidoran-m':'Nidoran♂','mr-mime':'Mr. Mime','farfetchd':'Farfetch’d','dewgong':'Dewgong','vileplume':'Vileplume','wigglytuff':'Wigglytuff'
+};
+function itNameFromNames(obj){return obj?.names?.find(x=>x.language?.name==='it')?.name||nameItFallback[obj?.name]||title(obj?.name||'');}
+async function speciesItName(name){try{const s=await api(BASE+'pokemon-species/'+name);return itNameFromNames(s)}catch{return nameItFallback[name]||title(name)}}
+function formatEvolutionDetails(details){
+ if(!details)return 'Evoluzione';
+ const parts=[];
+ if(details.trigger?.name==='level-up'){
+   if(details.min_level)parts.push(`🆙 Livello ${details.min_level}`); else parts.push('🆙 Salendo di livello');
+   if(details.min_happiness)parts.push(`❤️ Felicità ≥ ${details.min_happiness}`);
+   if(details.known_move)parts.push(`🎯 Con ${title(details.known_move.name)}`);
+   if(details.held_item)parts.push(`🎁 Tenendo ${evoItemIt[details.held_item.name]||title(details.held_item.name)}`);
+   if(details.time_of_day)parts.push(`🕐 ${details.time_of_day}`);
+ } else if(details.trigger?.name==='use-item') parts.push(`🪨 ${evoItemIt[details.item?.name]||title(details.item?.name||'Pietra/oggetto')}`);
+ else if(details.trigger?.name==='trade') parts.push(`🔄 Scambio${details.held_item?` con ${evoItemIt[details.held_item.name]||title(details.held_item.name)}`:''}`);
+ else parts.push(title(details.trigger?.name||'Condizione speciale'));
+ return parts.join(' • ');
+}
+function evolutionDetailsFromApi(node){
+ const out=[];
+ for(const e of (node.evolves_to||[])){
+   const name=e.species.name;
+   const details=(e.evolution_details||[]).filter(d=>{
+     if(d.time_of_day)return false;
+     if(['level-up','use-item','trade'].includes(d.trigger?.name))return true;
+     return false;
+   });
+   for(const d of (details.length?details:[null]))out.push({to:name,text:formatEvolutionDetails(d)});
+   out.push(...evolutionDetailsFromApi(e));
+ }
+ return out;
+}
+function speciesIdFromUrl(url){const m=String(url||'').match(/\/(\d+)\/?$/);return m?Number(m[1]):0;}
+function chainNodes(node,depth=0,out=[]){out.push({name:node.species.name,depth});(node.evolves_to||[]).forEach(x=>chainNodes(x,depth+1,out));return out;}
+function renderEvolutionTree(node,fromName){
+ if(!node)return '';
+ const nodes=(node.evolves_to||[]).map(child=>{
+   const childName=child.species.name;
+   const details=(child.evolution_details||[]).filter(d=>['level-up','use-item','trade'].includes(d.trigger?.name) && !d.time_of_day);
+   const override=(evolutionOverrides[node.species.name]||[]).find(x=>x.to===childName);
+   const text=override?.text || (details.length?details.map(formatEvolutionDetails).join(' / '):'Condizione speciale');
+   return `<div class="evo-branch"><div class="evo-condition">${esc(text)}</div><button class="evo-node ${childName===fromName?'current':''}" onclick="openPoke('${childName}')"><img src="${sprite(speciesIdFromUrl(child.species.url)||nameId(childName))}" alt=""><span>${esc(nameItFallback[childName]||title(childName))}</span></button>${renderEvolutionTree(child,childName)}</div>`;
+ }).join('');
+ return nodes?`<div class="evo-children">${nodes}</div>`:'';
+}
+function renderEvolutionSection(chain, current){
+ const root=chain?.chain;if(!root)return '<p class="muted">Catena evolutiva non disponibile.</p>';
+ const flat=chainNodes(root).map(x=>x.name);
+ const currentIndex=flat.indexOf(current);
+ const prev=[];
+ function findPrev(node){for(const child of (node.evolves_to||[])){if(child.species.name===current)return node.species.name;const p=findPrev(child);if(p)return p;}return null}
+ const p=findPrev(root); if(p)prev.push(p);
+ const note=localEvolutionNotes[current]?`<div class="notice">${esc(localEvolutionNotes[current])}</div>`:'';
+ return `${note}<div class="evo-root"><button class="evo-node ${root.species.name===current?'current':''}" onclick="openPoke('${root.species.name}')"><img src="${sprite(speciesIdFromUrl(root.species.url)||nameId(root.species.name))}" alt=""><span>${esc(nameItFallback[root.species.name]||title(root.species.name))}</span></button></div>${renderEvolutionTree(root,root.species.name)}<p class="small muted">${currentIndex>=0?`Questa specie è nella catena evolutiva #${currentIndex+1}.`:''}</p>`;
+}
+function encounterLabel(method){const m=method?.name||'';return ({'walk-in-grass':'🌿 Erba','surf':'🌊 Surf','old-rod':'🎣 Vecchio Amo','good-rod':'🎣 Amo Buono','super-rod':'🎣 Super Amo','rock-smash':'🪨 Spaccaroccia','headbutt':'🌳 Albero'}[m]||`📍 ${title(m)}`);}
+async function loadEncounters(name){
+ try{
+   const data=await api(BASE+'pokemon/'+name+'/encounters');
+   const rows=[];
+   for(const loc of data){const vd=loc.version_details?.find(v=>v.version?.name==='firered');if(!vd)continue;for(const e of vd.encounter_details||[]){rows.push({location:loc.location_area?.name?.replace(/-/g,' ')||'Area sconosciuta',method:encounterLabel(e.method),min:e.min_level,max:e.max_level,chance:e.chance})}}
+   return rows;
+ }catch{return []}
+}
+function formatLocationName(n){return title(n).replace(/\bMt Moon\b/,'Mt. Moon').replace(/\bRoute\b/,'Percorso').replace(/\bPokemon\b/,'Pokémon');}
+async function openPoke(n){
+ const d=document.getElementById('pokeDetail'); if(!d){location.href='pokedex.html?pokemon='+encodeURIComponent(n);return;}
+ d.style.display='block';d.innerHTML=`<div class="loading"><b>⏳ Caricamento ${esc(nameItFallback[n]||title(n))}...</b><p class="muted">Dati Pokémon, evoluzioni e incontri FireRed.</p></div>`;d.scrollIntoView({behavior:'smooth',block:'start'});
+ try{
+  const [p,s]=await Promise.all([api(BASE+'pokemon/'+n),api(BASE+'pokemon-species/'+n)]);
+  const chain=await api(s.evolution_chain.url);
+  const itName=itNameFromNames(s);
+  const abilities=(p.abilities||[]).filter(a=>!a.is_hidden).map(a=>title(a.ability.name)).join(', ')||'—';
+  const vg=p.moves.flatMap(m=>m.version_group_details.filter(v=>v.version_group.name===GEN3_VERSION_GROUP).map(v=>({name:m.move.name,method:v.move_learn_method.name,level:v.level_learned_at,url:m.move.url}))).filter((m,i,a)=>a.findIndex(x=>x.name===m.name&&x.method===m.method&&x.level===m.level)===i);
+  const level=vg.filter(m=>m.method==='level-up').sort((a,b)=>a.level-b.level);
+  const tm=vg.filter(m=>m.method==='machine').sort((a,b)=>a.name.localeCompare(b.name));
+  const stats=p.stats.map(x=>`<div class="stat"><span>${({hp:'PS','attack':'Attacco','defense':'Difesa','special-attack':'Att. Speciale','special-defense':'Dif. Speciale','speed':'Velocità'}[x.stat.name]||title(x.stat.name))}</span><b>${x.base_stat}</b></div>`).join('');
+  const encounters=await loadEncounters(n);
+  const special=specialObtain[n];
+  const encounterHtml=encounters.length?`<div class="encounter-grid">${encounters.map(e=>`<div class="encounter"><b>${esc(formatLocationName(e.location))}</b><span>${esc(e.method)}</span><small>Lv. ${e.min===e.max?e.min:`${e.min}–${e.max}`} · ${e.chance}%</small></div>`).join('')}</div>`:'';
+  const obtainHtml=(special||encounterHtml)?`${special?`<div class="notice"><b>🎁 Ottenimento speciale:</b> ${esc(special)}</div>`:''}${encounterHtml||'<p class="muted">Nessun incontro selvatico FireRed trovato nei dati PokéAPI.</p>'}`:'<p class="muted">Nessun dato di cattura disponibile.</p>';
+  const moves=level.length?`<div class="scroll"><table><thead><tr><th>Lv.</th><th>Mossa</th><th>Tipo/Categoria</th></tr></thead><tbody>${level.map(m=>`<tr><td>${m.level}</td><td><button class="link-button" onclick="openMove('${m.name}')">${esc(title(m.name))}</button></td><td class="move-cell" data-move="${esc(m.name)}">—</td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">Nessuna mossa di livello disponibile.</p>';
+  const machines=tm.length?`<div class="chips">${tm.map(m=>`<button class="chip clickable" onclick="openMove('${m.name}')">${esc(title(m.name))}</button>`).join('')}</div>`:'<p class="muted">Nessuna MT/MN compatibile trovata.</p>';
+  const flavor=s.flavor_text_entries?.find(x=>x.language?.name==='it'&&['firered','leafgreen'].includes(x.version?.name))?.flavor_text?.replace(/\f/g,' ') || s.flavor_text_entries?.find(x=>x.language?.name==='it')?.flavor_text?.replace(/\f/g,' ') || 'Descrizione non disponibile.';
+  const role=`<p><b>⭐ Consiglio FireRed:</b> ${strategyHint(n,p.types.map(x=>x.type.name))}</p>`;
+  d.innerHTML=`<div class="detail-head"><div><div class="small muted">Pokédex regionale</div><h2>#${String(p.id).padStart(3,'0')} ${esc(itName)}</h2><div class="chips">${p.types.map(x=>`<span class="chip">${esc(typeIt[x.type.name]||title(x.type.name))}</span>`).join('')}</div></div><img src="${sprite(p.id)}" alt="${esc(itName)}"></div>
+  <div class="chips detail-badges"><span class="badge">🔥 FireRed / LeafGreen</span>${special?'<span class="badge">🎁 Ottenimento speciale</span>':''}${tradeLike.has(n)?'<span class="badge">🔄 Scambio/evoluzione speciale</span>':''}</div>
+  <div class="two"><div><h3>📊 Statistiche base</h3>${stats}</div><div><h3>🧠 Informazioni</h3><p><b>Abilità Gen III:</b> ${esc(abilities)}</p><p><b>Descrizione:</b> ${esc(flavor)}</p>${role}</div></div>
+  <h3>🧬 Evoluzione</h3><div class="card subtle">${renderEvolutionSection(chain,n)}</div>
+  <h3>📍 Dove trovarlo in FireRed</h3><div class="card subtle">${obtainHtml}</div>
+  <h3>📈 Mosse apprese salendo di livello</h3>${moves}
+  <h3>💿 MT/MN compatibili</h3>${machines}
+  <p class="small muted">Dati dinamici da PokéAPI; condizioni e disponibilità specifiche FireRed sono filtrate sulla Generazione III e integrate con note locali quando PokéAPI non distingue l'ottenimento in-game.</p>`;
+  await enrichMoveCells(d);
+ }catch(e){d.innerHTML=`<div class="card"><b>⚠️ Errore nel caricamento.</b><p class="muted">${esc(e.message)}</p><button onclick="openPoke('${n}')">Riprova</button></div>`;}
+}
+function strategyHint(n,types){
+ const hints={charizard:'Molto utile in storia grazie a velocità e Attacco Speciale; evita Roccia e Acqua e sfrutta Fuoco/Volante.',venusaur:'Ottimo controllo di stato e buon equilibrio tra attacco speciale e resistenze.',blastoise:'Affidabile per la storia, soprattutto grazie a Surf e alla buona solidità.',pikachu:'Veloce e ottimo contro Acqua/Volante; Raichu è più immediato se hai già la Pietratuono.',nidoking:'Grande copertura offensiva grazie a MT e mosse di tipi diversi.',nidoqueen:'Più resistente di Nidoking e molto versatile con le MT.',alakazam:'Attaccante speciale eccezionale, ma richiede scambio per essere ottenuto.',machamp:'Ottimo Attaccante fisico e risposta ai tipi Normale/Roccia/Acciaio.',lapras:'Molto completo per la storia, con Acqua/Ghiaccio e ottima resistenza.',snorlax:'Enorme quantità di PS e ottima capacità di reggere gli scontri lunghi.',gengar:'Velocissimo e forte sul lato speciale; richiede scambio.',starmie:'Molto veloce e potente sullo Speciale, eccellente con Surf/Psichico.'};return hints[n]||`Usa il suo STAB ${types.map(t=>typeIt[t]||title(t)).join('/')} e costruisci il moveset attorno alle debolezze degli avversari.`;
+}
+async function enrichMoveCells(root){
+ const cells=[...root.querySelectorAll('.move-cell')];
+ for(const c of cells){const n=c.dataset.move;try{const m=await api(BASE+'move/'+n);c.textContent=`${typeIt[m.type.name]||title(m.type.name)} · ${moveCategory(m)}`;}catch{c.textContent='—';}}
+}
 
 let apiMoves=[];
-const MOVES_CACHE_KEY="pokeguida_moves_api_v6";
-const physicalTypes=new Set(["normal","fighting","flying","poison","ground","rock","bug","ghost","steel"]);
-const typeIt={normal:"Normale",fire:"Fuoco",water:"Acqua",electric:"Elettro",grass:"Erba",ice:"Ghiaccio",fighting:"Lotta",poison:"Veleno",ground:"Terra",flying:"Volante",psychic:"Psico",bug:"Coleottero",rock:"Roccia",ghost:"Spettro",dragon:"Drago",dark:"Buio",steel:"Acciaio"};
-function moveCategory(m){if(m.damage_class?.name==="status")return "Stato";return physicalTypes.has(m.type.name)?"Fisica":"Speciale";}
-function renderMoves(){const list=document.getElementById("moveList");if(!list)return;const q=(document.getElementById("moveSearch").value||"").toLowerCase().trim(),cat=document.getElementById("moveCat").value,typ=document.getElementById("moveType").value;if(!apiMoves.length){list.innerHTML='<div class="card"><b>⏳ Caricamento archivio mosse...</b><p class="muted">I dati vengono letti direttamente da PokéAPI.</p></div>';return;}const arr=apiMoves.filter(m=>(!q||m.name.includes(q))&&(cat==="all"||moveCategory(m).toLowerCase()===({physical:"fisica",special:"speciale",status:"stato"}[cat]))&&(typ==="all"||typeIt[m.type.name]===typ));list.innerHTML=arr.map(m=>`<div class="card"><h3>${esc(title(m.name))}</h3><div class="chips"><span class="chip">${typeIt[m.type.name]||title(m.type.name)}</span><span class="chip">${moveCategory(m)}</span></div><div class="stat"><span>Potenza</span><b>${m.power??"—"}</b></div><div class="stat"><span>Precisione</span><b>${m.accuracy??"—"}</b></div><div class="stat"><span>PP</span><b>${m.pp??"—"}</b></div><p class="small muted">ID PokéAPI #${m.id} • Generazione ${m.generation?.name?.replace("generation-","")||"—"}</p></div>`).join("")||'<div class="card">Nessuna mossa trovata.</div>';}
+const MOVES_CACHE_KEY='pokeguida_moves_api_v7';
+const physicalTypes=new Set(['normal','fighting','flying','poison','ground','rock','bug','ghost','steel']);
+const typeIt={normal:'Normale',fire:'Fuoco',water:'Acqua',electric:'Elettro',grass:'Erba',ice:'Ghiaccio',fighting:'Lotta',poison:'Veleno',ground:'Terra',flying:'Volante',psychic:'Psico',bug:'Coleottero',rock:'Roccia',ghost:'Spettro',dragon:'Drago',dark:'Buio',steel:'Acciaio'};
+function moveCategory(m){if(m.damage_class?.name==='status')return 'Stato';return physicalTypes.has(m.type.name)?'Fisica':'Speciale';}
+function moveItName(m){return m.names?.find(x=>x.language?.name==='it')?.name||title(m.name)}
+function moveDescription(m){return m.flavor_text_entries?.find(x=>x.language?.name==='it'&&x.version_group?.name===GEN3_VERSION_GROUP)?.flavor_text?.replace(/\f/g,' ')||m.effect_entries?.find(x=>x.language?.name==='it')?.short_effect||m.effect_entries?.find(x=>x.language?.name==='en')?.short_effect||'Descrizione non disponibile.'}
+function renderMoves(){const list=document.getElementById('moveList');if(!list)return;const q=(document.getElementById('moveSearch').value||'').toLowerCase().trim(),cat=document.getElementById('moveCat').value,typ=document.getElementById('moveType').value;if(!apiMoves.length){list.innerHTML='<div class="card"><b>⏳ Caricamento archivio mosse...</b><p class="muted">I dati vengono letti direttamente da PokéAPI.</p></div>';return;}const arr=apiMoves.filter(m=>(!q||m.name.includes(q)||(moveItName(m)||'').toLowerCase().includes(q))&&(cat==='all'||moveCategory(m).toLowerCase()===({physical:'fisica',special:'speciale',status:'stato'}[cat]))&&(typ==='all'||m.type.name===typ));list.innerHTML=arr.map(m=>`<div class="card clickable-card" onclick="openMove('${m.name}')"><h3>${esc(moveItName(m))}</h3><div class="chips"><span class="chip">${typeIt[m.type.name]||title(m.type.name)}</span><span class="chip">${moveCategory(m)}</span></div><div class="stat"><span>Potenza</span><b>${m.power??'—'}</b></div><div class="stat"><span>Precisione</span><b>${m.accuracy??'—'}</b></div><div class="stat"><span>PP</span><b>${m.pp??'—'}</b></div><p class="small muted">Gen III · tocca per dettagli</p></div>`).join('')||'<div class="card">Nessuna mossa trovata.</div>';}
 async function loadMovesFromApi(){
- const list=document.getElementById("moveList");if(!list)return;
+ const list=document.getElementById('moveList');if(!list)return;
  try{
   const saved=localStorage.getItem(MOVES_CACHE_KEY);
-  if(saved){try{const parsed=JSON.parse(saved);if(Array.isArray(parsed)&&parsed.length>=300){apiMoves=parsed;renderMoves();return;}}catch{}}
+  if(saved){try{const parsed=JSON.parse(saved);if(Array.isArray(parsed)&&parsed.length>=300&&parsed.every(x=>x.names||x.name)){apiMoves=parsed;renderMoves();return;}}catch{}}
   list.innerHTML='<div class="card"><b>⏳ Scarico le mosse Gen III…</b><p class="muted">Il primo caricamento è più lungo; poi i dati restano in cache.</p></div>';
-  const index=await api("https://pokeapi.co/api/v2/move?limit=1000&offset=0");
-  const refs=index.results.filter(x=>Number(x.url.split("/").filter(Boolean).pop())<=354);apiMoves=[];
+  const index=await api(BASE+'move?limit=1000&offset=0');const refs=index.results.filter(x=>Number(x.url.split('/').filter(Boolean).pop())<=354);apiMoves=[];
   for(let i=0;i<refs.length;i+=8){const batch=await Promise.all(refs.slice(i,i+8).map(x=>api(x.url)));apiMoves.push(...batch);apiMoves.sort((a,b)=>a.id-b.id);list.innerHTML=`<div class="card"><b>⏳ Mosse caricate: ${apiMoves.length}/${refs.length}</b></div>`;}
   localStorage.setItem(MOVES_CACHE_KEY,JSON.stringify(apiMoves));renderMoves();
  }catch(e){console.error(e);list.innerHTML='<div class="card"><b>⚠️ Errore nel caricamento delle mosse.</b><p class="muted">Controlla la connessione e riprova.</p><button onclick="loadMovesFromApi()">Riprova</button></div>';}
 }
+async function openMove(n){
+ const d=document.getElementById('moveDetail');if(!d){location.href='moves.html?move='+encodeURIComponent(n);return;}d.style.display='block';d.innerHTML='<b>⏳ Caricamento mossa...</b>';d.scrollIntoView({behavior:'smooth',block:'start'});
+ try{const m=await api(BASE+'move/'+n);const it=moveItName(m);const desc=moveDescription(m);const learners=[];
+  for(let i=0;i<allNames.length;i+=10){const batch=await Promise.all(allNames.slice(i,i+10).map(async name=>{try{const p=cache[BASE+'pokemon/'+name]||await api(BASE+'pokemon/'+name);return p.moves.some(x=>x.move.name===n&&x.version_group_details.some(v=>v.version_group.name===GEN3_VERSION_GROUP));}catch{return false}}));batch.forEach((ok,j)=>{if(ok)learners.push(allNames[i+j])});d.querySelector('.move-loading')?.replaceChildren(document.createTextNode(`Compatibilità controllate: ${Math.min(i+10,allNames.length)}/${allNames.length}`));}
+  d.innerHTML=`<div class="detail-head"><div><div class="small muted">Mossa Generazione III</div><h2>${esc(it)}</h2><div class="chips"><span class="chip">${typeIt[m.type.name]||title(m.type.name)}</span><span class="chip">${moveCategory(m)}</span></div></div><div class="move-power"><b>${m.power??'—'}</b><span>Potenza</span></div></div><div class="two"><div><div class="stat"><span>Potenza</span><b>${m.power??'—'}</b></div><div class="stat"><span>Precisione</span><b>${m.accuracy??'—'}${m.accuracy?'%':''}</b></div><div class="stat"><span>PP</span><b>${m.pp??'—'}</b></div></div><div><h3>📖 Descrizione</h3><p>${esc(desc)}</p><p class="small muted">Tipo ${typeIt[m.type.name]||title(m.type.name)} · Categoria ${moveCategory(m)} secondo le regole Gen III.</p></div></div><h3>🐾 Pokémon che possono impararla in FireRed/LeafGreen</h3><div class="chips">${learners.map(n=>`<button class="chip clickable" onclick="openPoke('${n}')">${esc(nameItFallback[n]||title(n))}</button>`).join('')||'<span class="muted">Nessun Pokémon Kanto trovato.</span>'}</div>`;
+ }catch(e){d.innerHTML=`<div class="card"><b>⚠️ Errore.</b><p>${esc(e.message)}</p></div>`}
+}
+
 function renderTMs(){
  const q=document.getElementById("tmSearch").value.toLowerCase(),typ=document.getElementById("tmType").value,imp=document.getElementById("tmImportant").value;
- document.getElementById("tmBody").innerHTML=tms.filter(x=>(!q||x.join(" ").toLowerCase().includes(q))&&(typ==="all"||x[2]===typ)&&(imp==="all"||x[7])).map(x=>`<tr><td><b>TM${x[0]}</b>${x[7]?'<br><span class="small">⭐ storia</span>':""}</td><td>${x[1]}</td><td>${x[2]}</td><td>${x[3]}</td><td>${x[4]}</td><td>${x[5]}</td><td>${x[6]}</td></tr>`).join("");
+ document.getElementById("tmBody").innerHTML=tms.filter(x=>(!q||x.join(" ").toLowerCase().includes(q))&&(typ==="all"||x[2]===typ)&&(imp==="all"||x[7])).map(x=>`<tr class="clickable-row" onclick="openTM('${x[0]}')"><td><b>TM${x[0]}</b>${x[7]?'<br><span class="small">⭐ storia</span>':""}</td><td>${x[1]}</td><td>${x[2]}</td><td>${x[3]}</td><td>${x[4]}</td><td>${x[5]}</td><td>${x[6]}</td></tr>`).join("");
  document.getElementById("hmList").innerHTML=hms.map(x=>`<div class="card"><h3>${x[0]} — ${x[1]}</h3><span class="chip">${x[2]}</span><p>${x[3]}</p></div>`).join("");
+}
+async function openTM(num){
+ const d=document.getElementById('tmDetail');if(!d)return;const row=tms.find(x=>x[0]===String(num));if(!row)return;d.style.display='block';d.innerHTML=`<b>⏳ Caricamento ${esc('TM'+num+' — '+row[1])}...</b>`;d.scrollIntoView({behavior:'smooth',block:'start'});
+ try{
+   const idx=await api(BASE+'move?limit=1000&offset=0');const ref=idx.results.find(x=>x.name===row[1].toLowerCase().replaceAll(' ','-'));const m=ref?await api(ref.url):null;
+   const learners=[];if(m){for(let i=0;i<allNames.length;i+=10){const batch=await Promise.all(allNames.slice(i,i+10).map(async name=>{try{const p=cache[BASE+'pokemon/'+name]||await api(BASE+'pokemon/'+name);return p.moves.some(x=>x.move.name===m.name&&x.version_group_details.some(v=>v.version_group.name===GEN3_VERSION_GROUP&&v.move_learn_method.name==='machine'));}catch{return false}}));batch.forEach((ok,j)=>{if(ok)learners.push(allNames[i+j])});}}
+   d.innerHTML=`<div class="detail-head"><div><div class="small muted">MT FireRed / LeafGreen</div><h2>TM${row[0]} — ${esc(row[1])}</h2><div class="chips"><span class="chip">${esc(row[2])}</span><span class="chip">${esc(row[5])}</span></div></div><div class="move-power"><b>${row[3]}</b><span>Potenza</span></div></div><div class="two"><div><div class="stat"><span>PP</span><b>${row[4]}</b></div><div class="stat"><span>Categoria</span><b>${row[5]}</b></div><div class="stat"><span>Dove</span><b>${esc(row[6])}</b></div></div><div><h3>🎯 Compatibilità</h3><p>${learners.length} Pokémon Kanto possono impararla in FireRed/LeafGreen.</p></div></div><h3>🐾 Pokémon compatibili</h3><div class="chips">${learners.map(n=>`<button class="chip clickable" onclick="openPoke('${n}')">${esc(nameItFallback[n]||title(n))}</button>`).join('')||'<span class="muted">Nessun dato trovato.</span>'}</div>`;
+ }catch(e){d.innerHTML=`<div class="card"><b>⚠️ Errore.</b><p>${esc(e.message)}</p></div>`}
 }
 
 
@@ -193,7 +355,7 @@ function toggleGym(i){checks["gym"+i]=!checks["gym"+i];save();renderGyms();rende
 function teamCard(n){const id=nameId(n);return `<div class="poke" onclick="addTeam('${n}')"><img loading="lazy" src="${sprite(id)}" alt="${title(n)}"><b>${title(n)}</b><div class="small" style="text-align:center">+ aggiungi</div></div>`}
 function renderTeam(){
  const q=document.getElementById("teamSearch").value.toLowerCase(),typ=document.getElementById("teamAddType").value;
- document.getElementById("teamResults").innerHTML=allNames.filter(n=>n.includes(q)).filter(n=>typ==="all"||cache[n]?.types?.some(t=>title(t.type.name)===typ)||!typ).slice(0,36).map(teamCard).join("");
+ document.getElementById("teamResults").innerHTML=allNames.filter(n=>n.includes(q)).filter(n=>typ==="all"||cache[n]?.types?.some(t=>t.type.name===typ)||!typ).slice(0,36).map(teamCard).join("");
  document.getElementById("teamSlots").innerHTML=Array.from({length:6},(_,i)=>{const n=team[i];return `<div class="card team-slot">${n?`<div><img src="${sprite(nameId(n))}" style="width:75px;height:75px;display:block;margin:auto"><h3 style="text-align:center">${title(n)}</h3></div><div class="team-actions"><button class="danger" onclick="removeTeam(${i})">Rimuovi</button><button class="button alt" onclick="selectCompare('${n}')">Confronta</button></div>`:`<div><h3>Slot ${i+1}</h3><p class="muted">Vuoto</p></div>`}</div>`}).join("");
  renderAnalysis();renderCompare();
 }
@@ -231,13 +393,13 @@ function updateCheckProgress(){const total=8+areas.length+6,done=[...Object.keys
 
 
 const page=document.body.dataset.page;
-try{localStorage.setItem("pokeguida_version", "6.0.0")}catch{}
+try{localStorage.setItem("pokeguida_version", V7)}catch{}
 initTypes();
 function listen(id,evt,fn){const el=document.getElementById(id);if(el)el.addEventListener(evt,fn);}
 if(page==="home"){listen("whereSelect","change",updateAdvice);renderHome();}
 if(page==="adventure"){["areaSearch","areaFilter","areaLevel"].forEach(id=>listen(id,"input",renderAreas));renderAreas();}
-if(page==="pokedex"){["pokeSearch","typeFilter","specialFilter"].forEach(id=>listen(id,"input",renderPokedex));renderPokedex();loadPokedexFromApi();}
-if(page==="moves"){["moveSearch","moveCat","moveType"].forEach(id=>listen(id,"input",renderMoves));renderMoves();loadMovesFromApi();}
+if(page==="pokedex"){["pokeSearch","typeFilter","specialFilter"].forEach(id=>listen(id,"input",renderPokedex));renderPokedex();loadPokedexFromApi();const qp=new URLSearchParams(location.search).get("pokemon");if(qp)setTimeout(()=>openPoke(qp),250);}
+if(page==="moves"){["moveSearch","moveCat","moveType"].forEach(id=>listen(id,"input",renderMoves));renderMoves();loadMovesFromApi();const qm=new URLSearchParams(location.search).get("move");if(qm)setTimeout(()=>openMove(qm),700);}
 if(page==="tms"){["tmSearch","tmType","tmImportant"].forEach(id=>listen(id,"input",renderTMs));renderTMs();}
 if(page==="gyms")renderGyms();
 if(page==="team"){["teamSearch","teamAddType"].forEach(id=>listen(id,"input",renderTeam));listen("compareA","change",showCompare);listen("compareB","change",showCompare);const reset=document.getElementById("resetTeam");if(reset)reset.onclick=()=>{if(confirm("Vuoi cancellare la squadra salvata?")){team=[];save();renderTeam();}};renderTeam();}
