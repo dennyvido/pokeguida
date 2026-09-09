@@ -115,7 +115,7 @@ const allNames=["bulbasaur","ivysaur","venusaur","charmander","charmeleon","char
 function nameId(n){return allNames.indexOf(n)+1;}
 
 let pokedexData=[];
-const POKE_CACHE_KEY='pokeguida_pokedex_api_v7';
+const POKE_CACHE_KEY='pokeguida_pokedex_api_v7_1';
 async function getItalianNamesBatch(items){
  for(let i=0;i<items.length;i+=10){
   const batch=await Promise.all(items.slice(i,i+10).map(async x=>{try{const sp=await api(BASE+'pokemon-species/'+x.name);return [x.name,itNameFromNames(sp)]}catch{return [x.name,nameItFallback[x.name]||title(x.name)]}}));
@@ -141,7 +141,7 @@ async function loadPokedexFromApi(){
 }
 
 /* ---------- FireRed / LeafGreen helpers ---------- */
-const V7='7.0.0';
+const V7='7.1.0';
 const BASE='https://pokeapi.co/api/v2/';
 const GEN3_VERSION_GROUP='firered-leafgreen';
 const evoItemIt={
@@ -178,6 +178,8 @@ const evolutionOverrides={
   horsea:[{to:'seadra',text:'🆙 Livello 32'}],seadra:[{to:'kingdra',text:'🔄 Scambio con Squama Drago • post-National Dex'}],goldeen:[{to:'seaking',text:'🆙 Livello 33'}],staryu:[{to:'starmie',text:'🪨 Pietraidrica'}],
   scyther:[{to:'scizor',text:'🔄 Scambio con Metalcoperta • post-National Dex'}],magikarp:[{to:'gyarados',text:'🆙 Livello 20'}],
   eevee:[{to:'vaporeon',text:'🪨 Pietraidrica'},{to:'jolteon',text:'🪨 Pietratuono'},{to:'flareon',text:'🪨 Pietrafocaia'}],
+  golbat:[{to:'crobat',text:'❤️ Felicità alta (≥220) • post-National Dex'}],
+  chansey:[{to:'blissey',text:'❤️ Felicità alta (≥220) • post-National Dex'}],
   porygon:[{to:'porygon2',text:'🔄 Scambio con Upgrade • post-National Dex'}],omanyte:[{to:'omastar',text:'🆙 Livello 40'}],kabuto:[{to:'kabutops',text:'🆙 Livello 40'}],
   dratini:[{to:'dragonair',text:'🆙 Livello 30'}],dragonair:[{to:'dragonite',text:'🆙 Livello 55'}]
 };
@@ -235,12 +237,13 @@ function speciesIdFromUrl(url){const m=String(url||'').match(/\/(\d+)\/?$/);retu
 function chainNodes(node,depth=0,out=[]){out.push({name:node.species.name,depth});(node.evolves_to||[]).forEach(x=>chainNodes(x,depth+1,out));return out;}
 function renderEvolutionTree(node,fromName){
  if(!node)return '';
- const nodes=(node.evolves_to||[]).map(child=>{
-   const childName=child.species.name;
-   const details=(child.evolution_details||[]).filter(d=>['level-up','use-item','trade'].includes(d.trigger?.name) && !d.time_of_day);
-   const override=(evolutionOverrides[node.species.name]||[]).find(x=>x.to===childName);
-   const text=override?.text || (details.length?details.map(formatEvolutionDetails).join(' / '):'Condizione speciale');
-   return `<div class="evo-branch"><div class="evo-condition">${esc(text)}</div><button class="evo-node ${childName===fromName?'current':''}" onclick="openPoke('${childName}')"><img src="${sprite(speciesIdFromUrl(child.species.url)||nameId(childName))}" alt=""><span>${esc(nameItFallback[childName]||title(childName))}</span></button>${renderEvolutionTree(child,childName)}</div>`;
+ // Per FireRed/LeafGreen usiamo esclusivamente la tabella locale verificata.
+ // Non mostriamo automaticamente i rami moderni restituiti dalla Evolution Chain generale di PokéAPI.
+ const allowed=evolutionOverrides[node.species.name]||[];
+ const nodes=allowed.map(rule=>{
+   const child=(node.evolves_to||[]).find(x=>x.species.name===rule.to)||{species:{name:rule.to,url:`${BASE}pokemon-species/${nameId(rule.to)}/`},evolves_to:[]};
+   const childName=rule.to;
+   return `<div class="evo-branch"><div class="evo-condition">${esc(rule.text)}</div><button class="evo-node ${childName===fromName?'current':''}" onclick="openPoke('${childName}')"><img src="${sprite(speciesIdFromUrl(child.species.url)||nameId(childName))}" alt=""><span>${esc(nameItFallback[childName]||title(childName))}</span></button>${renderEvolutionTree(child,childName)}</div>`;
  }).join('');
  return nodes?`<div class="evo-children">${nodes}</div>`:'';
 }
@@ -251,8 +254,11 @@ function renderEvolutionSection(chain, current){
  const prev=[];
  function findPrev(node){for(const child of (node.evolves_to||[])){if(child.species.name===current)return node.species.name;const p=findPrev(child);if(p)return p;}return null}
  const p=findPrev(root); if(p)prev.push(p);
- const note=localEvolutionNotes[current]?`<div class="notice">${esc(localEvolutionNotes[current])}</div>`:'';
- return `${note}<div class="evo-root"><button class="evo-node ${root.species.name===current?'current':''}" onclick="openPoke('${root.species.name}')"><img src="${sprite(speciesIdFromUrl(root.species.url)||nameId(root.species.name))}" alt=""><span>${esc(nameItFallback[root.species.name]||title(root.species.name))}</span></button></div>${renderEvolutionTree(root,root.species.name)}<p class="small muted">${currentIndex>=0?`Questa specie è nella catena evolutiva #${currentIndex+1}.`:''}</p>`;
+ let note=localEvolutionNotes[current]?`<div class="notice">${esc(localEvolutionNotes[current])}</div>`:'';
+ if(current==='eevee'){
+   note+=`<div class="notice"><b>⚠️ Evoluzioni di Eevee non disponibili in FireRed:</b> Espeon (giorno), Umbreon (notte), Leafeon, Glaceon e Sylveon. FireRed non dispone delle meccaniche necessarie per queste evoluzioni; in particolare Espeon/Umbreon richiedono il sistema giorno/notte. Leafeon, Glaceon e Sylveon sono state introdotte nelle generazioni successive.</div>`;
+ }
+ return `${note}<div class="evo-root"><button class="evo-node ${root.species.name===current?'current':''}" onclick="openPoke('${root.species.name}')"><img src="${sprite(speciesIdFromUrl(root.species.url)||nameId(root.species.name))}" alt=""><span>${esc(nameItFallback[root.species.name]||title(root.species.name))}</span></button></div>${renderEvolutionTree(root,root.species.name)}<p class="small muted">${currentIndex>=0?`Questa specie è nella catena evolutiva FireRed #${currentIndex+1}.`:''}</p>`;
 }
 function encounterLabel(method){const m=method?.name||'';return ({'walk-in-grass':'🌿 Erba','surf':'🌊 Surf','old-rod':'🎣 Vecchio Amo','good-rod':'🎣 Amo Buono','super-rod':'🎣 Super Amo','rock-smash':'🪨 Spaccaroccia','headbutt':'🌳 Albero'}[m]||`📍 ${title(m)}`);}
 async function loadEncounters(name){
@@ -271,7 +277,7 @@ async function openPoke(n){
   const [p,s]=await Promise.all([api(BASE+'pokemon/'+n),api(BASE+'pokemon-species/'+n)]);
   const chain=await api(s.evolution_chain.url);
   const itName=itNameFromNames(s);
-  const abilities=(p.abilities||[]).filter(a=>!a.is_hidden).map(a=>title(a.ability.name)).join(', ')||'—';
+  const abilityCandidates=(p.abilities||[]).filter(a=>!a.is_hidden); const abilityResults=await Promise.all(abilityCandidates.map(async a=>{try{const ab=await api(a.ability.url);return ['generation-i','generation-ii','generation-iii'].includes(ab.generation?.name)?title(a.ability.name):null}catch{return null}})); const abilities=abilityResults.filter(Boolean).join(', ')||'—';
   const vg=p.moves.flatMap(m=>m.version_group_details.filter(v=>v.version_group.name===GEN3_VERSION_GROUP).map(v=>({name:m.move.name,method:v.move_learn_method.name,level:v.level_learned_at,url:m.move.url}))).filter((m,i,a)=>a.findIndex(x=>x.name===m.name&&x.method===m.method&&x.level===m.level)===i);
   const level=vg.filter(m=>m.method==='level-up').sort((a,b)=>a.level-b.level);
   const tm=vg.filter(m=>m.method==='machine').sort((a,b)=>a.name.localeCompare(b.name));
@@ -304,7 +310,7 @@ async function enrichMoveCells(root){
 }
 
 let apiMoves=[];
-const MOVES_CACHE_KEY='pokeguida_moves_api_v7';
+const MOVES_CACHE_KEY='pokeguida_moves_api_v7_1';
 const physicalTypes=new Set(['normal','fighting','flying','poison','ground','rock','bug','ghost','steel']);
 const typeIt={normal:'Normale',fire:'Fuoco',water:'Acqua',electric:'Elettro',grass:'Erba',ice:'Ghiaccio',fighting:'Lotta',poison:'Veleno',ground:'Terra',flying:'Volante',psychic:'Psico',bug:'Coleottero',rock:'Roccia',ghost:'Spettro',dragon:'Drago',dark:'Buio',steel:'Acciaio'};
 function moveCategory(m){if(m.damage_class?.name==='status')return 'Stato';return physicalTypes.has(m.type.name)?'Fisica':'Speciale';}
